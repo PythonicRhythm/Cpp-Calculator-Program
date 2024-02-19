@@ -1,4 +1,16 @@
 
+// TODO:    Adjust the token_stream class to allow for multiple input sources
+//          such as files and predefined strings to allow for testing.
+
+// TODO:    Negative Numbers
+
+// TODO:    % (Remainer/Modulo)
+
+// TODO:    Pre-defined symbolic values
+
+// TODO:    Variables
+
+
 #include <iostream>
 #include <stdexcept>
 #include <string>
