@@ -4,7 +4,7 @@
 
 // TODO:    Negative Numbers (COMPLETED)
 
-// TODO:    % (Remainer/Modulo)
+// TODO:    % (Remainer/Modulo) (COMPLETED)
 
 // TODO:    Pre-defined symbolic values
 
@@ -135,7 +135,6 @@ token token_stream::get()    // read a token from the token_stream
     char ch;
     //std::cin >> ch;
     *source >> ch;
-    source->clear();
 
     switch (ch)
     {
