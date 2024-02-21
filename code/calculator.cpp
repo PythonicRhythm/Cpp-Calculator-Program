@@ -1,8 +1,8 @@
 
 // TODO:    Adjust the token_stream class to allow for multiple input sources
-//          such as files and predefined strings to allow for testing.
+//          such as files and predefined strings to allow for testing. (COMPLETED)
 
-// TODO:    Negative Numbers
+// TODO:    Negative Numbers (COMPLETED)
 
 // TODO:    % (Remainer/Modulo)
 
@@ -17,6 +17,19 @@
 #include <stdexcept>
 #include <string>
 #include "catch.hpp"
+
+
+#define NOERR               0
+#define PUTBACKFULL         1
+#define BADTOKEN            2
+#define MISSINGPARENTH      3
+#define MISSINGPRIMARY      4
+#define DIVIDEBYZERO        5
+#define MODBYZERO           6
+#define MAXEXPRESSIONS      7
+
+// program error value used for testing
+int calc_err = NOERR;
 
 // Token stuff
 // Token “kind” values:
@@ -100,8 +113,11 @@ public:
 
 void token_stream::putback(token t)
 {
-    if (full)
+    if (full) 
+    {
+        calc_err = PUTBACKFULL;
         throw std::runtime_error("putback() into a full buffer");
+    }
     buffer = t;
     full = true;
 }
@@ -119,6 +135,7 @@ token token_stream::get()    // read a token from the token_stream
     char ch;
     //std::cin >> ch;
     *source >> ch;
+    source->clear();
 
     switch (ch)
     {
@@ -130,6 +147,7 @@ token token_stream::get()    // read a token from the token_stream
     case '-':
     case '*':
     case '/':
+    case '%':
     case '\0':
         return token(ch);    // let each character represent itself
     case '.':
@@ -152,6 +170,7 @@ token token_stream::get()    // read a token from the token_stream
         return token(val);
     }
     default:
+        calc_err = BADTOKEN;
         throw std::runtime_error("Bad token");
     }
 }
@@ -200,7 +219,10 @@ double calculator::primary()    // Number or ‘(‘ Expression ‘)’
         double d = expression();
         t = ts.get();
         if (t.kind() != ')')
+        {
+            calc_err = MISSINGPARENTH;
             throw std::runtime_error("')' expected");
+        }
         return d;
     }
     case number:    // we use ‘8’ to represent the “kind” of a number
@@ -208,6 +230,7 @@ double calculator::primary()    // Number or ‘(‘ Expression ‘)’
     case '-':
         return -primary();
     default:
+        calc_err = MISSINGPRIMARY;
         throw std::runtime_error("primary expected");
     }
 }
@@ -228,8 +251,22 @@ double calculator::term()
         {
             double d = primary();
             if (d == 0)
+            {
+                calc_err = DIVIDEBYZERO;
                 throw std::runtime_error("divide by zero");
+            }
             left /= d;
+            break;
+        }
+        case '%':
+        {
+            double d = primary();
+            if(d == 0)
+            {
+                calc_err = MODBYZERO;
+                throw std::runtime_error("mod by zero");
+            }
+            left = (int)left % (int)d;
             break;
         }
         default:
@@ -267,6 +304,8 @@ void calculator::clean_up_mess()
     ts.ignore(print);
 }
 
+// Return set to vector<double> for testing purposes. The return vector's
+// elements will be tested to confirm if results are what they are supposed to be.
 std::vector<double> calculator::calculate(std::string const& commands)
 {
     std::vector<double> allVals(5);
@@ -296,8 +335,13 @@ std::vector<double> calculator::calculate(std::string const& commands)
             double val = expression();
             std::cout << result << val << std::endl;
 
+            // Used for testing purposes. Gathers results from each expression.
             if(numOfVals < allVals.capacity()) allVals[numOfVals] = val;
-            else throw std::runtime_error("Only 5 expressions per string.");
+            else 
+            {
+                calc_err = MAXEXPRESSIONS;
+                throw std::runtime_error("Only 5 expressions per string.");
+            }
             numOfVals++;
         }
         catch (std::runtime_error const& e)
@@ -315,7 +359,68 @@ bool equalDouble(double const a, double const b) {
     return std::fabs(a-b) <= ( std::max(std::abs(a), std::abs(b)) * DBL_EPSILON);
 }
 
-STUDENT_TEST("Test Case 1: Testing basic problems.") {
+STUDENT_TEST("Test Case 1: Testing formatting and reading.") {
+
+    calculator c;
+    // std::vector<double>arr1 = c.calculate(" ; ;; ;;; ;;;; ;;;;;"); // reads all prints and returns <0,0,0,0,0>
+    
+    // CHECK(equalDouble(arr1[0], 0) == true);
+    // CHECK(equalDouble(arr1[1], 0) == true);
+    // CHECK(equalDouble(arr1[2], 0) == true);
+    // CHECK(equalDouble(arr1[3], 0) == true);
+    // CHECK(equalDouble(arr1[4], 0) == true);
+
+    // std::vector<double>arr2 = c.calculate("q"); // should close program and return <0,0,0,0,0>
+    
+    // CHECK(equalDouble(arr2[0], 0) == true);
+    // CHECK(equalDouble(arr2[1], 0) == true);
+    // CHECK(equalDouble(arr2[2], 0) == true);
+    // CHECK(equalDouble(arr2[3], 0) == true);
+    // CHECK(equalDouble(arr2[4], 0) == true);
+
+    // std::vector<double>arr3 = c.calculate(" 1; 1;; 1;;; 1;;;; 1;;;;;"); // should return <1,1,1,1,1>
+    
+    // CHECK(equalDouble(arr3[0], 1) == true);
+    // CHECK(equalDouble(arr3[1], 1) == true);
+    // CHECK(equalDouble(arr3[2], 1) == true);
+    // CHECK(equalDouble(arr3[3], 1) == true);
+    // CHECK(equalDouble(arr3[4], 1) == true);
+
+    // std::vector<double>arr4 = c.calculate(" 1; 1;; 1;;;q 1;;;; q;;;;;"); // should return <1,1,1,0,0> 
+    
+    // CHECK(equalDouble(arr4[0], 1) == true);
+    // CHECK(equalDouble(arr4[1], 1) == true);
+    // CHECK(equalDouble(arr4[2], 1) == true);
+    // CHECK(equalDouble(arr4[3], 0) == true);
+    // CHECK(equalDouble(arr4[4], 0) == true);
+
+    // std::vector<double>arr5 = c.calculate("1;;;;;;;;;;;;;;;;;;;;;;;;;;;;q"); // should return <1,0,0,0,0> 
+    
+    // CHECK(equalDouble(arr5[0], 1) == true);
+    // CHECK(equalDouble(arr5[1], 0) == true);
+    // CHECK(equalDouble(arr5[2], 0) == true);
+    // CHECK(equalDouble(arr5[3], 0) == true);
+    // CHECK(equalDouble(arr5[4], 0) == true);
+    
+    // std::vector<double>arr6 = c.calculate("q 25; 24+2; 300%10; 26/0; 234-2;"); // should return <0,0,0,0,0> 
+    
+    // CHECK(equalDouble(arr6[0], 0) == true);
+    // CHECK(equalDouble(arr6[1], 0) == true);
+    // CHECK(equalDouble(arr6[2], 0) == true);
+    // CHECK(equalDouble(arr6[3], 0) == true);
+    // CHECK(equalDouble(arr6[4], 0) == true);
+
+    // std::vector<double>arr7 = c.calculate("23;23;34;6;               23;"); // should return <23,23,34,6,23> 
+    
+    // CHECK(equalDouble(arr7[0], 0) == true);
+    // CHECK(equalDouble(arr7[1], 0) == true);
+    // CHECK(equalDouble(arr7[2], 0) == true);
+    // CHECK(equalDouble(arr7[3], 0) == true);
+    // CHECK(equalDouble(arr7[4], 0) == true);
+    
+}
+
+STUDENT_TEST("Test Case 2: Testing basic problems.") {
 
     calculator c;
     std::vector<double>arr1 = c.calculate("3+5; 24+2; 1*50; 3/3; (23*2)+(23/2);");
@@ -363,7 +468,7 @@ STUDENT_TEST("Test Case 1: Testing basic problems.") {
     CHECK(equalDouble(arr3[4], -19.68) == false);
 }
 
-STUDENT_TEST("Test Case 2: Testing the limits of double equality.") {
+STUDENT_TEST("Test Case 3: Testing the limits of double equality.") {
     
     calculator c;
     std::vector<double> resultArray = c.calculate("(23*2)+(23/2);");
@@ -385,7 +490,7 @@ STUDENT_TEST("Test Case 2: Testing the limits of double equality.") {
     CHECK(!equalDouble(resultArray[0], 57.500000000001));
 }
 
-STUDENT_TEST("Test Case 3: Testing negative numbers.") {
+STUDENT_TEST("Test Case 4: Testing Feature 1, Negative Numbers.") {
 
     calculator c;
     std::vector<double> arr1 = c.calculate("(-15+-2); (-15+2); -(-15+-2); --(-15+-2); -(15+(-2));");
@@ -403,4 +508,24 @@ STUDENT_TEST("Test Case 3: Testing negative numbers.") {
     CHECK(equalDouble(arr2[2], 1) == true);
     CHECK(equalDouble(arr2[3], 30) == true);
     CHECK(equalDouble(arr2[4], 4) == true);
+}
+
+STUDENT_TEST("Test Case 5: Testing Feature 2, Modulus Operations.") {
+
+    calculator c;
+    std::vector<double> arr1 = c.calculate("25%3; (3%3)%3\%10; (((((25)))%5+5)%5+10)%2; (((32-2)%(34-24)+10)%2)+13%2; ((360%45)+27)%4;");
+
+    CHECK(equalDouble(arr1[0], 1) == true);
+    CHECK(equalDouble(arr1[1], 0) == true);
+    CHECK(equalDouble(arr1[2], 0) == true);
+    CHECK(equalDouble(arr1[3], 1) == true);
+    CHECK(equalDouble(arr1[4], 3) == true);
+
+    std::vector<double> arr2 = c.calculate("(((34+64)%7)+17)%3; (45+5+2)%6; -(34)%12; 64-(54%24); (25%25)+(10%3)+(20%6);");
+
+    CHECK(equalDouble(arr2[0], 2) == true);
+    CHECK(equalDouble(arr2[1], 4) == true);
+    CHECK(equalDouble(arr2[2], -10) == true);
+    CHECK(equalDouble(arr2[3], 58) == true);
+    CHECK(equalDouble(arr2[4], 3) == true);
 }
