@@ -1,14 +1,18 @@
 
-// TODO:    Adjust the token_stream class to allow for multiple input sources
-//          such as files and predefined strings to allow for testing. (COMPLETED)
+// TODO:    Fix std::cin/string read issues. Currently '\n', '\t' and others lock the program if
+//          they are at the end of the string/cin
 
-// TODO:    Negative Numbers (COMPLETED)
+// (COMPLETED)  TODO:   Adjust the token_stream class to allow for multiple input sources
+//                      such as files and predefined strings to allow for testing.
 
-// TODO:    % (Remainer/Modulo) (COMPLETED)
+// (COMPLETED)  TODO:   Negative Numbers
+
+// (COMPLETED)  TODO:   % (Remainer/Modulo)
 
 // TODO:    Pre-defined symbolic values
 
 // TODO:    Variables
+
 
 
 #include <iostream>
@@ -83,6 +87,7 @@ public:
     token get();            // get a token
     void putback(token);    // put a token back into the token_stream
     void ignore(char c);    // discard tokens up to and including a c
+    bool bad_character();   // checks if next char cant be read by istream ">>"" operator
 
     // constructor: make a token_stream, the buffer starts empty
     token_stream()
@@ -92,6 +97,7 @@ public:
     {
     }
 
+    // unused for now. plans for creating a library for this calculator.
     token_stream(std::string const& str)
       : full(false)
       , buffer('\0')
@@ -110,6 +116,15 @@ public:
         return source->good();
     }
 };
+
+// bad_character() is used to confirm
+bool token_stream::bad_character() 
+{
+    // std::vector<char> const& badchars {' ', '\t', '\n', '\v', '\f', '\r'};
+    // if(source->peek())
+
+    return false;
+}
 
 void token_stream::putback(token t)
 {
@@ -361,13 +376,13 @@ bool equalDouble(double const a, double const b) {
 STUDENT_TEST("Test Case 1: Testing formatting and reading.") {
 
     calculator c;
-    // std::vector<double>arr1 = c.calculate(" ; ;; ;;; ;;;; ;;;;;"); // reads all prints and returns <0,0,0,0,0>
+    std::vector<double>arr1 = c.calculate(" ; ;; ;;; ;;;; ;;;;;"); // reads all prints and returns <0,0,0,0,0>
     
-    // CHECK(equalDouble(arr1[0], 0) == true);
-    // CHECK(equalDouble(arr1[1], 0) == true);
-    // CHECK(equalDouble(arr1[2], 0) == true);
-    // CHECK(equalDouble(arr1[3], 0) == true);
-    // CHECK(equalDouble(arr1[4], 0) == true);
+    CHECK(equalDouble(arr1[0], 0) == true);
+    CHECK(equalDouble(arr1[1], 0) == true);
+    CHECK(equalDouble(arr1[2], 0) == true);
+    CHECK(equalDouble(arr1[3], 0) == true);
+    CHECK(equalDouble(arr1[4], 0) == true);
 
     // std::vector<double>arr2 = c.calculate("q"); // should close program and return <0,0,0,0,0>
     
