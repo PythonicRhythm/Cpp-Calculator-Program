@@ -12,9 +12,11 @@
 
 
 #include <iostream>
+#include <vector>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include "catch.hpp"
 
 // Token stuff
 // Token “kind” values:
@@ -96,9 +98,6 @@ public:
     }
 };
 
-// single global instance of the token_stream
-token_stream ts;
-
 void token_stream::putback(token t)
 {
     if (full)
@@ -178,10 +177,20 @@ void token_stream::ignore(char c)
     }
 }
 
-// declaration so that primary() can call expression()
-double expression();
+class calculator {
+    
+    token_stream ts;
+    double primary();
+    double term();
+    double expression();
+    void clean_up_mess();
 
-double primary()    // Number or ‘(‘ Expression ‘)’
+public:
+    std::vector<double> calculate(std::string const& commands = "");
+
+};
+
+double calculator::primary()    // Number or ‘(‘ Expression ‘)’
 {
     token t = ts.get();
     switch (t.kind())
@@ -196,13 +205,15 @@ double primary()    // Number or ‘(‘ Expression ‘)’
     }
     case number:    // we use ‘8’ to represent the “kind” of a number
         return t.value();    // return the number’s value
+    case '-':
+        return -primary();
     default:
         throw std::runtime_error("primary expected");
     }
 }
 
 // exactly like expression(), but for * and /
-double term()
+double calculator::term()
 {
     double left = primary();    // get the Primary
     while (true)
@@ -230,7 +241,7 @@ double term()
 
 // read and evaluate: 1   1+2.5   1+2+3.14  etc.
 // 	 return the sum (or difference)
-double expression()
+double calculator::expression()
 {
     double left = term();    // get the Term
     while (true)
@@ -251,13 +262,15 @@ double expression()
     }
 }
 
-void clean_up_mess()
+void calculator::clean_up_mess()
 {
     ts.ignore(print);
 }
 
-void calculate(std::string const& commands = "")
+std::vector<double> calculator::calculate(std::string const& commands)
 {
+    std::vector<double> allVals(5);
+    int numOfVals = 0;
     if(!commands.empty()) ts = token_stream(commands);
     while (ts.has_more_tokens())
     {
@@ -271,7 +284,7 @@ void calculate(std::string const& commands = "")
                 t = ts.get();
 
             if (t.kind() == quit)
-                return;    // ‘q’ for “quit”
+                return allVals;    // ‘q’ for “quit”
             
             if (t.kind() == nullTerm)
             {
@@ -280,7 +293,12 @@ void calculate(std::string const& commands = "")
             }
             ts.putback(t);
 
-            std::cout << result << expression() << std::endl;
+            double val = expression();
+            std::cout << result << val << std::endl;
+
+            if(numOfVals < allVals.capacity()) allVals[numOfVals] = val;
+            else throw std::runtime_error("Only 5 expressions per string.");
+            numOfVals++;
         }
         catch (std::runtime_error const& e)
         {
@@ -288,23 +306,101 @@ void calculate(std::string const& commands = "")
             clean_up_mess();                       // <<< The tricky part!
         }
     }
+
+    return allVals;
 }
 
-int main()
-{
-    try
-    {
-        calculate("3+5; 24+2; 1*50; 3/3; (23*2)+(23/2);");
-        calculate("(1+2)*(3-2)/(6-3); ((33+3)-(3/2)*25); (23+45)-25*(6000-23); ((23+45)-25)*(6000-23); ((23+45)-25)*((6000-23)-32*100);");
-        calculate("(((34*3)))-(25-25)*10; 34*3*3*2; 3/3/3/3; 25; 32-2000;");
-        //calculate();
-        //calculate();
-        return 0;
-    }
-    catch (...)
-    {
-        // other errors (don't try to recover)
-        std::cerr << "exception\n";
-        return 2;
-    }
+// function for testing if doubles are almost equal.
+bool equalDouble(double const a, double const b) {
+    return std::fabs(a-b) <= ( std::max(std::abs(a), std::abs(b)) * DBL_EPSILON);
+}
+
+STUDENT_TEST("Test Case 1: Testing basic problems.") {
+
+    calculator c;
+    std::vector<double>arr1 = c.calculate("3+5; 24+2; 1*50; 3/3; (23*2)+(23/2);");
+    // should return true
+    CHECK(equalDouble(arr1[0], 8) == true);
+    CHECK(equalDouble(arr1[1], 26) == true);
+    CHECK(equalDouble(arr1[2], 50) == true);
+    CHECK(equalDouble(arr1[3], 1) == true);
+    CHECK(equalDouble(arr1[4], 57.5) == true);
+
+    // should return false
+    CHECK(equalDouble(arr1[0], 7) == false);
+    CHECK(equalDouble(arr1[1], 2) == false);
+    CHECK(equalDouble(arr1[2], 40) == false);
+    CHECK(equalDouble(arr1[3], 102) == false);
+    CHECK(equalDouble(arr1[4], 7.5) == false);
+
+    std::vector<double>arr2 = c.calculate("(1+2)*(3-2)/(6-3); ((33+3)-(3/2)*25); (23+45)-25*(6000-23); ((23+45)-25)*(6000-23); ((23+45)-25)*((6000-23)-32*100);");
+    // should return true
+    CHECK(equalDouble(arr2[0], 1) == true);
+    CHECK(equalDouble(arr2[1], -1.5) == true);
+    CHECK(equalDouble(arr2[2], -149357) == true);
+    CHECK(equalDouble(arr2[3], 257011) == true);
+    CHECK(equalDouble(arr2[4], 119411) == true);
+    
+    // should return false
+    CHECK(equalDouble(arr2[0], 3) == false);
+    CHECK(equalDouble(arr2[1], -3.5) == false);
+    CHECK(equalDouble(arr2[2], -357) == false);
+    CHECK(equalDouble(arr2[3], 011) == false);
+    CHECK(equalDouble(arr2[4], 411) == false);
+
+    std::vector<double>arr3 = c.calculate("(((34*3)))-(25-25)*10; 34*3*3*2; 3/3/3/3; 25; 32-2000;");
+    // should return true
+    CHECK(equalDouble(arr3[0], 102) == true);
+    CHECK(equalDouble(arr3[1], 612) == true);
+    CHECK(equalDouble(arr3[2], 0.1111111111111111111111111111) == true);
+    CHECK(equalDouble(arr3[3], 25) == true);
+    CHECK(equalDouble(arr3[4], -1968) == true);
+
+    CHECK(equalDouble(arr3[0], 0.11111121212) == false);
+    CHECK(equalDouble(arr3[1], -6142) == false);
+    CHECK(equalDouble(arr3[2], -1/9) == false);
+    CHECK(equalDouble(arr3[3], 25-25) == false);
+    CHECK(equalDouble(arr3[4], -19.68) == false);
+}
+
+STUDENT_TEST("Test Case 2: Testing the limits of double equality.") {
+    
+    calculator c;
+    std::vector<double> resultArray = c.calculate("(23*2)+(23/2);");
+    // Should pass.
+    CHECK(equalDouble(resultArray[0], 57.50));
+
+    // Testing the limits of equalDouble
+    CHECK(!equalDouble(resultArray[0], 57.55));
+    CHECK(!equalDouble(resultArray[0], 57.51));
+    CHECK(!equalDouble(resultArray[0], 57.501));
+    CHECK(!equalDouble(resultArray[0], 57.5001));
+    CHECK(!equalDouble(resultArray[0], 57.50001));
+    CHECK(!equalDouble(resultArray[0], 57.500001));
+    CHECK(!equalDouble(resultArray[0], 57.5000001));
+    CHECK(!equalDouble(resultArray[0], 57.50000001));
+    CHECK(!equalDouble(resultArray[0], 57.500000001));
+    CHECK(!equalDouble(resultArray[0], 57.5000000001));
+    CHECK(!equalDouble(resultArray[0], 57.50000000001));
+    CHECK(!equalDouble(resultArray[0], 57.500000000001));
+}
+
+STUDENT_TEST("Test Case 3: Testing negative numbers.") {
+
+    calculator c;
+    std::vector<double> arr1 = c.calculate("(-15+-2); (-15+2); -(-15+-2); --(-15+-2); -(15+(-2));");
+
+    CHECK(equalDouble(arr1[0], -17) == true);
+    CHECK(equalDouble(arr1[1], -13) == true);
+    CHECK(equalDouble(arr1[2], 17) == true);
+    CHECK(equalDouble(arr1[3], -17) == true);
+    CHECK(equalDouble(arr1[4], -13) == true);
+
+    std::vector<double> arr2 = c.calculate("-(-2300-2300); -1-1-1; (--1); -42+42--36-3+(---3); (-(-(4)));");
+
+    CHECK(equalDouble(arr2[0], 4600) == true);
+    CHECK(equalDouble(arr2[1], -3) == true);
+    CHECK(equalDouble(arr2[2], 1) == true);
+    CHECK(equalDouble(arr2[3], 30) == true);
+    CHECK(equalDouble(arr2[4], 4) == true);
 }
