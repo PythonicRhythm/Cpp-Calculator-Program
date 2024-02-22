@@ -28,9 +28,10 @@
 #define BADTOKEN            2
 #define MISSINGPARENTH      3
 #define MISSINGPRIMARY      4
-#define DIVIDEBYZERO        5
-#define MODBYZERO           6
-#define MAXEXPRESSIONS      7
+#define MISSINGPRINT        5
+#define DIVIDEBYZERO        6
+#define MODBYZERO           7
+#define MAXEXPRESSIONS      8
 
 // program error value used for testing
 int calc_err = NOERR;
@@ -108,7 +109,6 @@ public:
     void set_source(std::string const& str)
     {
         source = new std::istringstream (str);
-;
     }
 
     bool has_more_tokens()
@@ -116,15 +116,6 @@ public:
         return source->good();
     }
 };
-
-// bad_character() is used to confirm
-bool token_stream::bad_character() 
-{
-    // std::vector<char> const& badchars {' ', '\t', '\n', '\v', '\f', '\r'};
-    // if(source->peek())
-
-    return false;
-}
 
 void token_stream::putback(token t)
 {
@@ -149,6 +140,16 @@ token token_stream::get()    // read a token from the token_stream
     // note that >> skips whitespace (space, newline, tab, etc.)
     char ch;
     //std::cin >> ch;
+    // while(isspace(source->peek())) source->get();
+    if(source->eof()) return token('\0');
+    if(source->peek() == '\n')
+    {
+        source->get();
+        token t('\n');
+        return t;
+    }
+    
+    
     *source >> ch;
 
     switch (ch)
@@ -198,16 +199,31 @@ void token_stream::ignore(char c)
         full = false;
         return;
     }
+    else if (full && buffer.kind() == '\n')
+    {
+        full = false;
+        return;
+        /* code */
+    }
+    else if (full && buffer.kind() == '8')
+    {
+        return;
+    }
+    
     full = false;    // discard the contents of buffer
 
     // now search input:
-    char ch = 0;
+    char ch = source->get();
     //while (std::cin >> ch)
-    while(*source >> ch)
+    while(ch != c)
     {
-        if (ch == c)
-            break;
+        //std::cout << ch;
+        if(ch == '\n') return;
+        ch = source->get();
     }
+
+    source->get();
+
 }
 
 class calculator {
@@ -216,7 +232,7 @@ class calculator {
     double primary();
     double term();
     double expression();
-    void clean_up_mess();
+    void clean_up_mess(char const& c);
 
 public:
     std::vector<double> calculate(std::string const& commands = "");
@@ -235,6 +251,7 @@ double calculator::primary()    // Number or ‘(‘ Expression ‘)’
         if (t.kind() != ')')
         {
             calc_err = MISSINGPARENTH;
+            ts.putback(t);
             throw std::runtime_error("')' expected");
         }
         return d;
@@ -245,7 +262,7 @@ double calculator::primary()    // Number or ‘(‘ Expression ‘)’
         return -primary();
     default:
         calc_err = MISSINGPRIMARY;
-        throw std::runtime_error("primary expected");
+        throw std::runtime_error("primary ( '(', {number}, '-' ) expected");
     }
 }
 
@@ -267,6 +284,7 @@ double calculator::term()
             if (d == 0)
             {
                 calc_err = DIVIDEBYZERO;
+                ts.ignore(print);
                 throw std::runtime_error("divide by zero");
             }
             left /= d;
@@ -278,6 +296,7 @@ double calculator::term()
             if(d == 0)
             {
                 calc_err = MODBYZERO;
+                ts.ignore(print);
                 throw std::runtime_error("mod by zero");
             }
             left = (int)left % (int)d;
@@ -313,9 +332,9 @@ double calculator::expression()
     }
 }
 
-void calculator::clean_up_mess()
+void calculator::clean_up_mess(char const& c)
 {
-    ts.ignore(print);
+    ts.ignore(c);
 }
 
 // Return set to vector<double> for testing purposes. The return vector's
@@ -324,7 +343,12 @@ std::vector<double> calculator::calculate(std::string const& commands)
 {
     std::vector<double> allVals(5);
     int numOfVals = 0;
-    if(!commands.empty()) ts = token_stream(commands);
+    bool str_src = false;
+    if(!commands.empty())
+    {
+        str_src = true;
+        ts = token_stream(commands);
+    }
     while (ts.has_more_tokens())
     {
         try
@@ -334,7 +358,12 @@ std::vector<double> calculator::calculate(std::string const& commands)
 
             // first discard all “prints”
             while (t.kind() == print)
+            {
+                //std::cout << t.kind();
                 t = ts.get();
+            }
+
+            //std::cout << "{" << t.kind() << "}";
 
             if (t.kind() == quit)
                 return allVals;    // ‘q’ for “quit”
@@ -342,11 +371,34 @@ std::vector<double> calculator::calculate(std::string const& commands)
             if (t.kind() == nullTerm)
             {
                 std::cout << "Command String read..." << std::endl;
-                continue;
+                return allVals;
             }
-            ts.putback(t);
 
+            if (t.kind() == '\n')
+            {
+                if(!str_src)
+                {
+                    ts.putback(t);
+                    clean_up_mess(print);
+                    continue;
+                }
+
+                return allVals;
+            }
+            
+            ts.putback(t);
+            //std::cout << t.kind();
             double val = expression();
+            t = ts.get();
+            //std::cout << t.kind();
+
+            if(t.kind() != print) 
+            {
+                calc_err = MISSINGPRINT;
+                ts.putback(t);
+                throw std::runtime_error("';' expected");
+            }
+
             std::cout << result << val << std::endl;
 
             // Used for testing purposes. Gathers results from each expression.
@@ -354,14 +406,18 @@ std::vector<double> calculator::calculate(std::string const& commands)
             else 
             {
                 calc_err = MAXEXPRESSIONS;
-                throw std::runtime_error("Only 5 expressions per string.");
+                return allVals;
             }
             numOfVals++;
+
+            t = ts.get();
+            //std::cout << "{" << t.kind() << "}";
+            if(t.kind() != '\n') ts.putback(t);
         }
         catch (std::runtime_error const& e)
         {
             std::cerr << e.what() << std::endl;    // write error message
-            clean_up_mess();                       // <<< The tricky part!
+            clean_up_mess(print);                       // <<< The tricky part!
         }
     }
 
@@ -384,53 +440,53 @@ STUDENT_TEST("Test Case 1: Testing formatting and reading.") {
     CHECK(equalDouble(arr1[3], 0) == true);
     CHECK(equalDouble(arr1[4], 0) == true);
 
-    // std::vector<double>arr2 = c.calculate("q"); // should close program and return <0,0,0,0,0>
+    std::vector<double>arr2 = c.calculate("q"); // should close program and return <0,0,0,0,0>
     
-    // CHECK(equalDouble(arr2[0], 0) == true);
-    // CHECK(equalDouble(arr2[1], 0) == true);
-    // CHECK(equalDouble(arr2[2], 0) == true);
-    // CHECK(equalDouble(arr2[3], 0) == true);
-    // CHECK(equalDouble(arr2[4], 0) == true);
+    CHECK(equalDouble(arr2[0], 0) == true);
+    CHECK(equalDouble(arr2[1], 0) == true);
+    CHECK(equalDouble(arr2[2], 0) == true);
+    CHECK(equalDouble(arr2[3], 0) == true);
+    CHECK(equalDouble(arr2[4], 0) == true);
 
-    // std::vector<double>arr3 = c.calculate(" 1; 1;; 1;;; 1;;;; 1;;;;;"); // should return <1,1,1,1,1>
+    std::vector<double>arr3 = c.calculate(" 1; 1;; 1;;; 1;;;; 1;;;;;"); // should return <1,1,1,1,1>
     
-    // CHECK(equalDouble(arr3[0], 1) == true);
-    // CHECK(equalDouble(arr3[1], 1) == true);
-    // CHECK(equalDouble(arr3[2], 1) == true);
-    // CHECK(equalDouble(arr3[3], 1) == true);
-    // CHECK(equalDouble(arr3[4], 1) == true);
+    CHECK(equalDouble(arr3[0], 1) == true);
+    CHECK(equalDouble(arr3[1], 1) == true);
+    CHECK(equalDouble(arr3[2], 1) == true);
+    CHECK(equalDouble(arr3[3], 1) == true);
+    CHECK(equalDouble(arr3[4], 1) == true);
 
-    // std::vector<double>arr4 = c.calculate(" 1; 1;; 1;;;q 1;;;; q;;;;;"); // should return <1,1,1,0,0> 
+    std::vector<double>arr4 = c.calculate(" 1; 1;; 1;;;q 1;;;; q;;;;;"); // should return <1,1,1,0,0> 
     
-    // CHECK(equalDouble(arr4[0], 1) == true);
-    // CHECK(equalDouble(arr4[1], 1) == true);
-    // CHECK(equalDouble(arr4[2], 1) == true);
-    // CHECK(equalDouble(arr4[3], 0) == true);
-    // CHECK(equalDouble(arr4[4], 0) == true);
+    CHECK(equalDouble(arr4[0], 1) == true);
+    CHECK(equalDouble(arr4[1], 1) == true);
+    CHECK(equalDouble(arr4[2], 1) == true);
+    CHECK(equalDouble(arr4[3], 0) == true);
+    CHECK(equalDouble(arr4[4], 0) == true);
 
-    // std::vector<double>arr5 = c.calculate("1;;;;;;;;;;;;;;;;;;;;;;;;;;;;q"); // should return <1,0,0,0,0> 
+    std::vector<double>arr5 = c.calculate("1;;;;;;;;;;;;;;;;;;;;;;;;;;;;q"); // should return <1,0,0,0,0> 
     
-    // CHECK(equalDouble(arr5[0], 1) == true);
-    // CHECK(equalDouble(arr5[1], 0) == true);
-    // CHECK(equalDouble(arr5[2], 0) == true);
-    // CHECK(equalDouble(arr5[3], 0) == true);
-    // CHECK(equalDouble(arr5[4], 0) == true);
+    CHECK(equalDouble(arr5[0], 1) == true);
+    CHECK(equalDouble(arr5[1], 0) == true);
+    CHECK(equalDouble(arr5[2], 0) == true);
+    CHECK(equalDouble(arr5[3], 0) == true);
+    CHECK(equalDouble(arr5[4], 0) == true);
     
-    // std::vector<double>arr6 = c.calculate("q 25; 24+2; 300%10; 26/0; 234-2;"); // should return <0,0,0,0,0> 
+    std::vector<double>arr6 = c.calculate("q 25; 24+2; 300%10; 26/0; 234-2;"); // should return <0,0,0,0,0> 
     
-    // CHECK(equalDouble(arr6[0], 0) == true);
-    // CHECK(equalDouble(arr6[1], 0) == true);
-    // CHECK(equalDouble(arr6[2], 0) == true);
-    // CHECK(equalDouble(arr6[3], 0) == true);
-    // CHECK(equalDouble(arr6[4], 0) == true);
+    CHECK(equalDouble(arr6[0], 0) == true);
+    CHECK(equalDouble(arr6[1], 0) == true);
+    CHECK(equalDouble(arr6[2], 0) == true);
+    CHECK(equalDouble(arr6[3], 0) == true);
+    CHECK(equalDouble(arr6[4], 0) == true);
 
-    // std::vector<double>arr7 = c.calculate("23;23;34;6;               23;"); // should return <23,23,34,6,23> 
+    std::vector<double>arr7 = c.calculate("23;23;34;6;               23;"); // should return <23,23,34,6,23> 
     
-    // CHECK(equalDouble(arr7[0], 0) == true);
-    // CHECK(equalDouble(arr7[1], 0) == true);
-    // CHECK(equalDouble(arr7[2], 0) == true);
-    // CHECK(equalDouble(arr7[3], 0) == true);
-    // CHECK(equalDouble(arr7[4], 0) == true);
+    CHECK(equalDouble(arr7[0], 23) == true);
+    CHECK(equalDouble(arr7[1], 23) == true);
+    CHECK(equalDouble(arr7[2], 34) == true);
+    CHECK(equalDouble(arr7[3], 6) == true);
+    CHECK(equalDouble(arr7[4], 23) == true);
     
 }
 
@@ -543,3 +599,19 @@ STUDENT_TEST("Test Case 5: Testing Feature 2, Modulus Operations.") {
     CHECK(equalDouble(arr2[3], 58) == true);
     CHECK(equalDouble(arr2[4], 3) == true);
 }
+
+// int main()
+// {
+//     try
+//     {
+//         calculator c1;
+//         c1.calculate();
+//         return 0;
+//     }
+//     catch (...)
+//     {
+//         // other errors (don't try to recover)
+//         std::cerr << "exception\n";
+//         return 2;
+//     }
+// }
