@@ -78,23 +78,24 @@ std::string const result = "= ";    // indicate that a result follows
 class token_stream
 {
     // representation: not directly accessible to users:
-    bool full;       // is there a token in the buffer?
-    token buffer;    // here is where we keep a Token put back using
-                     // putback()
-    std::istream* source = nullptr;
+    bool full;                          // is there a token in the buffer?
+    token buffer;                       // here is where we keep a Token put back using
+                                        // putback()
+    std::istream* source = nullptr;     // the source of the stream of characters.
+    bool string_input;
 
 public:
     // user interface:
     token get();            // get a token
     void putback(token);    // put a token back into the token_stream
     void ignore(char c);    // discard tokens up to and including a c
-    bool bad_character();   // checks if next char cant be read by istream ">>"" operator
 
     // constructor: make a token_stream, the buffer starts empty
     token_stream()
       : full(false)
       , buffer('\0')
       , source(&std::cin)
+      , string_input(false)
     {
     }
 
@@ -102,6 +103,7 @@ public:
     token_stream(std::string const& str)
       : full(false)
       , buffer('\0')
+      , string_input(true)
     {
         set_source(str);
     }
@@ -139,16 +141,26 @@ token token_stream::get()    // read a token from the token_stream
 
     // note that >> skips whitespace (space, newline, tab, etc.)
     char ch;
-    //std::cin >> ch;
-    // while(isspace(source->peek())) source->get();
-    if(source->eof()) return token('\0');
-    if(source->peek() == '\n')
-    {
-        source->get();
-        token t('\n');
-        return t;
-    }
+
+    // Code below is used to allow for cleaning up errors on the behalf of the user.
+    if(source->eof()) return token(nullTerm);   // if at end of file, return nullterm... should lead to end of program.
     
+    if(!string_input) 
+    {
+        //if(source->peek() == '\n')                  // if remaining character is newline, return it ... leads to either end of prog or a clean_up_mess() call
+        while(isspace(source->peek()))
+        {
+            if(source->peek() == '\n')
+            {
+                source->get();
+                return token('\n');
+            }
+            source->get();
+            
+            // token t('\n');
+            // return t;
+        }
+    }
     
     *source >> ch;
 
@@ -177,10 +189,8 @@ token token_stream::get()    // read a token from the token_stream
     case '8':
     case '9':
     {
-        //std::cin.putback(ch);    // put digit back into the input stream
         source->putback(ch);
         double val;
-        //std::cin >> val;    // read a floating-point number
         *source >> val;
         return token(val);
     }
@@ -194,16 +204,27 @@ token token_stream::get()    // read a token from the token_stream
 void token_stream::ignore(char c)
 {
     // first look in buffer:
-    if (full && c == buffer.kind())    // && means 'and'
+    if (full && buffer.kind() == c) // if buffer contains 'c', delete it and return.
     {
+        // checks if the expression that failed is the last one.
+        // if so, cleans out all whitespace.
         full = false;
+        char ch = source->get();
+        while(isspace(ch)) {
+            if(ch == '\n') return;
+            ch = source->get();
+        }
+
+        if(source->eof()) return;
+        
+        // if there is another expression, putsback token and program should continue onward.
+        source->putback(ch);
         return;
     }
     else if (full && buffer.kind() == '\n')
     {
         full = false;
         return;
-        /* code */
     }
     else if (full && buffer.kind() == '8')
     {
@@ -212,13 +233,12 @@ void token_stream::ignore(char c)
     
     full = false;    // discard the contents of buffer
 
-    // now search input:
+    // now search input src for c and delete until c, '\n', EOF is found
     char ch = source->get();
-    //while (std::cin >> ch)
     while(ch != c)
     {
-        //std::cout << ch;
         if(ch == '\n') return;
+        if(source->eof()) return;
         ch = source->get();
     }
 
@@ -239,12 +259,12 @@ public:
 
 };
 
-double calculator::primary()    // Number or ‘(‘ Expression ‘)’
+double calculator::primary()    // number, negative sign or ‘(‘ Expression ‘)’
 {
     token t = ts.get();
     switch (t.kind())
     {
-    case '(':    // handle ‘(’expression ‘)’
+    case '(':    // handle ‘(’ expression ‘)’
     {
         double d = expression();
         t = ts.get();
@@ -262,11 +282,12 @@ double calculator::primary()    // Number or ‘(‘ Expression ‘)’
         return -primary();
     default:
         calc_err = MISSINGPRIMARY;
+        ts.putback(t);
         throw std::runtime_error("primary ( '(', {number}, '-' ) expected");
     }
 }
 
-// exactly like expression(), but for * and /
+// exactly like expression(), but for * / % operators
 double calculator::term()
 {
     double left = primary();    // get the Primary
@@ -284,7 +305,6 @@ double calculator::term()
             if (d == 0)
             {
                 calc_err = DIVIDEBYZERO;
-                ts.ignore(print);
                 throw std::runtime_error("divide by zero");
             }
             left /= d;
@@ -296,7 +316,6 @@ double calculator::term()
             if(d == 0)
             {
                 calc_err = MODBYZERO;
-                ts.ignore(print);
                 throw std::runtime_error("mod by zero");
             }
             left = (int)left % (int)d;
@@ -341,14 +360,21 @@ void calculator::clean_up_mess(char const& c)
 // elements will be tested to confirm if results are what they are supposed to be.
 std::vector<double> calculator::calculate(std::string const& commands)
 {
-    std::vector<double> allVals(5);
-    int numOfVals = 0;
-    bool str_src = false;
+
+    // Used for testing purposes.
+    std::vector<double> allVals(5); // returns the calculated results as a vector.
+    int numOfVals = 0;              // keeps track of the amount of values per string argument.
+    calc_err = NOERR;
+
+    // if a string was given ... set as source stream
+    // else string_source remains false.
+    bool string_source = false;
     if(!commands.empty())
     {
-        str_src = true;
+        string_source = true;
         ts = token_stream(commands);
     }
+
     while (ts.has_more_tokens())
     {
         try
@@ -358,40 +384,30 @@ std::vector<double> calculator::calculate(std::string const& commands)
 
             // first discard all “prints”
             while (t.kind() == print)
-            {
-                //std::cout << t.kind();
                 t = ts.get();
-            }
 
-            //std::cout << "{" << t.kind() << "}";
-
+            // check if user typed ‘q’ for “quit”
             if (t.kind() == quit)
-                return allVals;    // ‘q’ for “quit”
+                return allVals;    
             
+            // check if we reached the end of string.
             if (t.kind() == nullTerm)
             {
                 std::cout << "Command String read..." << std::endl;
                 return allVals;
             }
 
+            // check if we reached a newline char
             if (t.kind() == '\n')
-            {
-                if(!str_src)
-                {
-                    ts.putback(t);
-                    clean_up_mess(print);
-                    continue;
-                }
-
-                return allVals;
-            }
+                continue;
             
+            // token is something useful like number, parenth, operator, etc.
+            // lets try to make an expression with it.
             ts.putback(t);
-            //std::cout << t.kind();
             double val = expression();
             t = ts.get();
-            //std::cout << t.kind();
 
+            // Used to check if user actually used a print message at the end of the expression as intended.
             if(t.kind() != print) 
             {
                 calc_err = MISSINGPRINT;
@@ -399,25 +415,32 @@ std::vector<double> calculator::calculate(std::string const& commands)
                 throw std::runtime_error("';' expected");
             }
 
+            // Used for testing purposes. ONLY STRINGS
+            // Gathers results from each expression and adds to allVals vector.
+            // if max number of expressions per line is met, prints error message and returns vector.
+            if(string_source)
+            {
+                if(numOfVals < allVals.size()) allVals[numOfVals] = val;
+                else 
+                {
+                    calc_err = MAXEXPRESSIONS;
+                    std::cerr << "Too many expressions in one line. Five only" << std::endl;
+                    return allVals;
+                }
+                numOfVals++;
+            }
+
+            // printing end result per expression to terminal
             std::cout << result << val << std::endl;
 
-            // Used for testing purposes. Gathers results from each expression.
-            if(numOfVals < allVals.capacity()) allVals[numOfVals] = val;
-            else 
-            {
-                calc_err = MAXEXPRESSIONS;
-                return allVals;
-            }
-            numOfVals++;
-
+            // if '\n' is all that is left... remove it ... else pushback()
             t = ts.get();
-            //std::cout << "{" << t.kind() << "}";
             if(t.kind() != '\n') ts.putback(t);
         }
         catch (std::runtime_error const& e)
         {
             std::cerr << e.what() << std::endl;    // write error message
-            clean_up_mess(print);                       // <<< The tricky part!
+            clean_up_mess(print);                  // <<< The tricky part!
         }
     }
 
@@ -487,6 +510,18 @@ STUDENT_TEST("Test Case 1: Testing formatting and reading.") {
     CHECK(equalDouble(arr7[2], 34) == true);
     CHECK(equalDouble(arr7[3], 6) == true);
     CHECK(equalDouble(arr7[4], 23) == true);
+
+    std::vector<double>arr8 = c.calculate(" 35+25; 35+25; 35+25; 35+25; 35+25; 35+25; 35+25; 35+25; 35+25; 35+25; 35+25; 35+25;"); // should return only <60,60,60,60,60>
+
+    CHECK(equalDouble(arr8[0], 60) == true);
+    CHECK(equalDouble(arr8[1], 60) == true);
+    CHECK(equalDouble(arr8[2], 60) == true);
+    CHECK(equalDouble(arr8[3], 60) == true);
+    CHECK(equalDouble(arr8[4], 60) == true);
+    CHECK(arr8.size() == 5);
+
+    // fake test that should fail just to see std output on test run.
+    //CHECK(arr7[4] == 0);
     
 }
 
@@ -558,6 +593,15 @@ STUDENT_TEST("Test Case 3: Testing the limits of double equality.") {
     CHECK(!equalDouble(resultArray[0], 57.5000000001));
     CHECK(!equalDouble(resultArray[0], 57.50000000001));
     CHECK(!equalDouble(resultArray[0], 57.500000000001));
+    CHECK(!equalDouble(resultArray[0], 57.5000000000001));
+
+    // They are similar enough and will pass an equality check.
+    CHECK(equalDouble(resultArray[0], 57.50000000000001));
+    CHECK(equalDouble(resultArray[0], 57.500000000000001));
+    CHECK(equalDouble(resultArray[0], 57.5000000000000001));
+    CHECK(equalDouble(resultArray[0], 57.50000000000000001));
+    CHECK(equalDouble(resultArray[0], 57.500000000000000001));
+
 }
 
 STUDENT_TEST("Test Case 4: Testing Feature 1, Negative Numbers.") {
@@ -598,6 +642,30 @@ STUDENT_TEST("Test Case 5: Testing Feature 2, Modulus Operations.") {
     CHECK(equalDouble(arr2[2], -10) == true);
     CHECK(equalDouble(arr2[3], 58) == true);
     CHECK(equalDouble(arr2[4], 3) == true);
+}
+
+STUDENT_TEST("Test Case 6: Testing error messages.") {
+
+    calculator c;
+    
+    c.calculate("(23-23);");
+    CHECK(calc_err == NOERR);
+    c.calculate("(23-23d);");
+    CHECK(calc_err == BADTOKEN);
+    c.calculate("(24+23;");
+    CHECK(calc_err == MISSINGPARENTH);
+    c.calculate("24+;");
+    CHECK(calc_err == MISSINGPRIMARY);
+    c.calculate("24+23");
+    CHECK(calc_err == MISSINGPRINT);
+    c.calculate("(23/0);");
+    CHECK(calc_err == DIVIDEBYZERO);
+    c.calculate("(23%0);");
+    CHECK(calc_err == MODBYZERO);
+    c.calculate("35+25; 35+25; 35+25; 35+25; 35+25; 35+25;");
+    CHECK(calc_err == MAXEXPRESSIONS);
+    c.calculate("(23-23);");
+    CHECK(calc_err == NOERR);
 }
 
 // int main()
