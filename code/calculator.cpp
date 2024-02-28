@@ -69,6 +69,10 @@ public:
     {
         return value_;
     }
+    void set_value(double newVal)
+    {
+        value_ = newVal;
+    }
 };
 
 // User interaction strings:
@@ -164,6 +168,8 @@ token token_stream::get()    // read a token from the token_stream
     
     *source >> ch;
 
+    if(isalpha(ch)) return token(ch);
+
     switch (ch)
     {
     case '(':
@@ -176,6 +182,7 @@ token token_stream::get()    // read a token from the token_stream
     case '/':
     case '%':
     case '\0':
+    case '=':
         return token(ch);    // let each character represent itself
     case '.':
     case '0':
@@ -196,7 +203,8 @@ token token_stream::get()    // read a token from the token_stream
     }
     default:
         calc_err = BADTOKEN;
-        throw std::runtime_error("Bad token");
+        //std::string c (1, ch);
+        throw std::runtime_error("Bad Token");
     }
 }
 
@@ -249,10 +257,12 @@ void token_stream::ignore(char c)
 class calculator {
     
     token_stream ts;
+    std::vector<token> userVars;
     double primary();
     double term();
     double expression();
     void clean_up_mess(char const& c);
+    void new_variable();
 
 public:
     std::vector<double> calculate(std::string const& commands = "");
@@ -262,28 +272,59 @@ public:
 double calculator::primary()    // number, negative sign or ‘(‘ Expression ‘)’
 {
     token t = ts.get();
+
     switch (t.kind())
     {
-    case '(':    // handle ‘(’ expression ‘)’
-    {
-        double d = expression();
-        t = ts.get();
-        if (t.kind() != ')')
+        case '(':    // handle ‘(’ expression ‘)’
         {
-            calc_err = MISSINGPARENTH;
-            ts.putback(t);
-            throw std::runtime_error("')' expected");
+            double d = expression();
+            t = ts.get();
+            if (t.kind() != ')')
+            {
+                calc_err = MISSINGPARENTH;
+                ts.putback(t);
+                //std::string c (1, t.kind());
+                throw std::runtime_error("')' expected");
+            }
+            return d;
         }
-        return d;
-    }
-    case number:    // we use ‘8’ to represent the “kind” of a number
-        return t.value();    // return the number’s value
-    case '-':
-        return -primary();
-    default:
-        calc_err = MISSINGPRIMARY;
-        ts.putback(t);
-        throw std::runtime_error("primary ( '(', {number}, '-' ) expected");
+        case number:    // we use ‘8’ to represent the “kind” of a number
+            return t.value();    // return the number’s value
+        case '-':
+            return -primary();
+        default:
+        {
+            if(isalpha(t.kind()))
+            {
+                // std::cout << "in:" << t.kind() << std::endl; 
+                // std::cout << "in:" << t.value() << std::endl;
+                // for(int i = 0; i < userVars.size(); i++)
+                // {
+                //     if(userVars.at(i).kind() == t.kind())
+                //         return userVars.at(i).value();
+                // }
+
+                for(auto& tok: userVars) {
+                    if(tok.kind() == t.kind())
+                    {
+                        t.set_value(tok.value());
+                        //std::cout << "entered: " << tok.kind() << " " << tok.value();
+                        return tok.value();
+                    }
+                }
+
+                calc_err = BADTOKEN;
+                ts.putback(t);
+                //std::string c (1, t.kind());
+                throw std::runtime_error("Bad Token");
+            }
+            else{
+                calc_err = MISSINGPRIMARY;
+                ts.putback(t);
+                //std::string c (1, t.kind());
+                throw std::runtime_error("primary ( '(', {number}, '-' ) expected");
+            }
+        }
     }
 }
 
@@ -291,6 +332,7 @@ double calculator::primary()    // number, negative sign or ‘(‘ Expression �
 double calculator::term()
 {
     double left = primary();    // get the Primary
+    //std::cout << "prim: " << left;
     while (true)
     {
         token t = ts.get();    // get the next Token ...
@@ -305,7 +347,7 @@ double calculator::term()
             if (d == 0)
             {
                 calc_err = DIVIDEBYZERO;
-                throw std::runtime_error("divide by zero");
+                throw std::runtime_error("cannot divide by zero");
             }
             left /= d;
             break;
@@ -316,7 +358,7 @@ double calculator::term()
             if(d == 0)
             {
                 calc_err = MODBYZERO;
-                throw std::runtime_error("mod by zero");
+                throw std::runtime_error("cannot mod by zero");
             }
             left = (int)left % (int)d;
             break;
@@ -354,6 +396,109 @@ double calculator::expression()
 void calculator::clean_up_mess(char const& c)
 {
     ts.ignore(c);
+}
+
+void calculator::new_variable()
+{
+    // check if 'e' comes after 'l'
+    token t = ts.get();
+    if(t.kind() != 'e')
+    {
+        // if not throw error showing what token was there instead
+        calc_err = BADTOKEN;
+        //ts.putback(t);
+        // std::string c;
+        // if(t.kind() == number) c.append(std::to_string(t.value()));
+        // else c = std::string(1, t.kind());
+        throw std::runtime_error("\"let\" expected");
+    }
+    
+    // checks if 't' comes after 'e'
+    t = ts.get();
+    if(t.kind() != 't')
+    {
+        calc_err = BADTOKEN;
+        //ts.putback(t);
+        // std::string c;
+        // if(t.kind() == number) c.append(std::to_string(t.value()));
+        // else c = std::string(1, t.kind());
+        throw std::runtime_error("\"let\" expected");
+    }
+
+    // checks if variable name comes after 't'
+    token var = ts.get();
+    if(isalpha(var.kind()))
+    {
+        // checks if variable name given is longer than one letter.
+        token next = ts.get();
+        if(isalpha(next.kind()))
+        {
+            calc_err = BADTOKEN;
+            //ts.putback(next);
+            // std::string c1 (1, var.kind());
+            // std::string c2 (1, next.kind());
+            throw std::runtime_error("one letter variable name expected");
+        }
+        t = next;
+
+        // checks if already exists and doesnt allow for overwrite for right now.
+        for(auto& tok: userVars)
+        {
+            if(tok.kind() == var.kind())
+            {
+                calc_err = BADTOKEN;
+                //ts.putback(t);
+                throw std::runtime_error("variable name already exists, no overwriting");
+            }
+        }
+
+    }
+    else {
+        // if not alphabetical then must be a mistake
+        calc_err = BADTOKEN;
+        //ts.putback(var);
+        // std::string c;
+        // if(var.kind() == number) c.append(std::to_string(var.value()));
+        // else c = std::string(1, var.kind());
+        throw std::runtime_error("variable name expected");
+    }
+
+    // checks if '=' comes after variable name
+    if(t.kind() != '=')
+    {
+        // if not, throw error showing what was there instead
+        calc_err = BADTOKEN;
+        //ts.putback(t);
+        // std::string c;
+        // if(t.kind() == number) c.append(std::to_string(t.value()));
+        // else c = std::string(1, t.kind());
+        throw std::runtime_error("'=' expected to complete variable");
+    }
+
+    // gathers an expression which will equal variable value.
+    double varValue = expression();
+    var.set_value(varValue);
+
+    // checks if ';' character comes after value
+    t = ts.get();
+    if(t.kind() != print)
+    {
+        // if not, throw error showing what was there instead
+        calc_err = MISSINGPRINT;
+        //ts.putback(t);
+        // std::string c;
+        // if(t.kind() == number) c.append(std::to_string(t.value()));
+        // else c = std::string(1, t.kind());
+        throw std::runtime_error("';' expected");
+    }
+
+    // variable passed all checks so it is set as a user variable
+    userVars.push_back(var);
+    std::cout << "Variable Created!" << std::endl;
+
+    // if '\n' is all that is left... remove it ... else pushback()
+    t = ts.get();
+    if(t.kind() != '\n') ts.putback(t);
 }
 
 // Return set to vector<double> for testing purposes. The return vector's
@@ -395,6 +540,15 @@ std::vector<double> calculator::calculate(std::string const& commands)
             {
                 std::cout << "Command String read..." << std::endl;
                 return allVals;
+            }
+
+            if (isalpha(t.kind()))
+            {
+                if(t.kind() == 'l')
+                {
+                    new_variable();
+                    continue;
+                }
             }
 
             // check if we reached a newline char
@@ -650,20 +804,47 @@ STUDENT_TEST("Test Case 6: Testing error messages.") {
     
     c.calculate("(23-23);");
     CHECK(calc_err == NOERR);
-    c.calculate("(23-23d);");
+    c.calculate("(300-(200+400)*32); (300-230-400)*(40*(30+2));");
+    CHECK(calc_err == NOERR);
+
+    c.calculate("(x-2);");
     CHECK(calc_err == BADTOKEN);
+    c.calculate("(300-2)*x; 29-x;");
+    CHECK(calc_err == BADTOKEN);
+    c.calculate("(230-300]);");
+    CHECK(calc_err == BADTOKEN);
+    c.calculate("'300-2';");
+    CHECK(calc_err == BADTOKEN);
+
+    c.calculate("(23-23d);");
+    CHECK(calc_err == MISSINGPARENTH);
     c.calculate("(24+23;");
     CHECK(calc_err == MISSINGPARENTH);
+
     c.calculate("24+;");
     CHECK(calc_err == MISSINGPRIMARY);
+    c.calculate("(200-340) + (230-;");
+    CHECK(calc_err == MISSINGPRIMARY);
+
     c.calculate("24+23");
     CHECK(calc_err == MISSINGPRINT);
+    c.calculate("let x = 10; (300-2)*x; 29-x");
+    CHECK(calc_err == MISSINGPRINT);
+
     c.calculate("(23/0);");
     CHECK(calc_err == DIVIDEBYZERO);
+    c.calculate("(400/(320-200-120));");
+    CHECK(calc_err == DIVIDEBYZERO);
+    
     c.calculate("(23%0);");
     CHECK(calc_err == MODBYZERO);
+    c.calculate("(400%(320-200-120));");
+    CHECK(calc_err == MODBYZERO);
+
     c.calculate("35+25; 35+25; 35+25; 35+25; 35+25; 35+25;");
     CHECK(calc_err == MAXEXPRESSIONS);
+
+    // Making sure error var resets to NOERR when new calc call is made.
     c.calculate("(23-23);");
     CHECK(calc_err == NOERR);
 }
