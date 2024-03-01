@@ -4,6 +4,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <cctype>
 
 // This enum type defines the different causes of runtime_errors
 // during the execution of the calculator program
@@ -15,8 +16,12 @@ enum class CPError
     MISSINGPARENTH,
     MISSINGPRIMARY,
     MISSINGPRINT,
+    MISSINGEQUAL,
+    MISSINGKEYWORD,
     DIVIDEBYZERO,
     MODBYZERO,
+    INVALIDVARNAME,
+    VAROVERWRITE,
     MAXEXPRESSIONS
 };
 
@@ -118,7 +123,8 @@ private:
     bool variable_exists(char const&) const;
 
 public:
-    // user interface: 
+    // user interface:
+    void erase_user_variables();
     std::vector<double> calculate(std::string const& commands = "");
 
 };
