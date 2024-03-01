@@ -263,8 +263,38 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(equalDouble(arr1[0], -57) == true);
 
     arr1 = c.calculate("let x = 10; (300-2)*x; 29-x");
+    c.erase_user_variables();
     CHECK(calc_err == CPError::MISSINGPRINT);
     CHECK(equalDouble(arr1[0], 2980) == true);
+
+    arr1 = c.calculate("let x = 10");
+    CHECK(calc_err == CPError::MISSINGPRINT);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("let x 10;");
+    CHECK(calc_err == CPError::MISSINGEQUAL);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("let x = 10; let y -200;");
+    c.erase_user_variables();
+    CHECK(calc_err == CPError::MISSINGEQUAL);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("l;");
+    CHECK(calc_err == CPError::MISSINGKEYWORD);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("l");
+    CHECK(calc_err == CPError::MISSINGKEYWORD);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("le");
+    CHECK(calc_err == CPError::MISSINGKEYWORD);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("le;");
+    CHECK(calc_err == CPError::MISSINGKEYWORD);
+    CHECK(equalDouble(arr1[0], 0) == true);
 
     arr1 = c.calculate("(23/0);");
     CHECK(calc_err == CPError::DIVIDEBYZERO);
@@ -282,9 +312,35 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(calc_err == CPError::MODBYZERO);
     CHECK(equalDouble(arr1[0], 22) == true);
 
+    arr1 = c.calculate("let xy = 10;");
+    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("let xyz = ;");
+    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("let 25 = 200;");
+    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("let mx = 200;");
+    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
     arr1 = c.calculate("35+25; 35+25; 35+25; 35+25; 35+25; 35+25;");
     CHECK(calc_err == CPError::MAXEXPRESSIONS);
     CHECK(arr1.size() == 5);
+
+    arr1 = c.calculate("let x = 200; let x = 25;");
+    c.erase_user_variables();
+    CHECK(calc_err == CPError::VAROVERWRITE);
+    CHECK(equalDouble(arr1[0], 0) == true);
+
+    arr1 = c.calculate("let x = 25; let y = 200*x; let z = x*y; let x = z;");
+    c.erase_user_variables();
+    CHECK(calc_err == CPError::VAROVERWRITE);
+    CHECK(equalDouble(arr1[0], 0) == true);
 
     // Making sure error var resets to NOERR when new calc call is made.
     arr1 = c.calculate("(23-23);");
