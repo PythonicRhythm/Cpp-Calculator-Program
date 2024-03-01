@@ -162,10 +162,8 @@ void calculator::token_stream::ignore(char c)
         full = false;
         return;
     }
-    else if (full && buffer.kind() == number)
-    {
-        return;
-    }
+    else if (full && buffer.kind() == number) return;
+    else if(full && buffer.kind() == quit) return;
     
     full = false;    // discard the contents of buffer
 
@@ -321,17 +319,36 @@ void calculator::set_variable()
     token t = ts.get();
     if(t.kind() != 'e')
     {
-        // if not throw error showing what token was there instead
-        calc_err = CPError::BADTOKEN;
-        throw std::runtime_error("\"let\" expected");
+        // if not 'e' throw error showing what token was there instead
+        calc_err = CPError::MISSINGKEYWORD;
+        ts.putback(t);
+        std::string errmsg("\"let\" expected but given {l");
+        if(iscntrl(t.kind()))
+            errmsg += ' ';
+        else if(t.kind() == number)
+            errmsg += std::to_string(t.value());
+        else
+            errmsg += t.kind();
+        errmsg += "}.";
+        throw std::runtime_error(errmsg);
     }
     
     // checks if 't' comes after 'e'
     t = ts.get();
     if(t.kind() != 't')
     {
-        calc_err = CPError::BADTOKEN;
-        throw std::runtime_error("\"let\" expected");
+        // if not 't' throw error showing what token was there instead
+        calc_err = CPError::MISSINGKEYWORD;
+        ts.putback(t);
+        std::string errmsg("\"let\" expected but given {le");
+        if(iscntrl(t.kind()))
+            errmsg += ' ';
+        else if(t.kind() == number)
+            errmsg += std::to_string(t.value());
+        else
+            errmsg += t.kind();
+        errmsg += "}.";
+        throw std::runtime_error(errmsg);
     }
 
     // checks if variable name comes after 't'
@@ -342,31 +359,63 @@ void calculator::set_variable()
         token next = ts.get();
         if(isalpha(next.kind()))
         {
-            calc_err = CPError::BADTOKEN;
-            throw std::runtime_error("one letter variable name expected");
+            // if longer than one letter throw err and show what was given
+            calc_err = CPError::INVALIDVARNAME;
+            ts.putback(next);
+            std::string errmsg("One letter var name expected but given {");
+            errmsg += var.kind();
+            errmsg += next.kind();
+            errmsg += "...}.";
+            throw std::runtime_error(errmsg);
         }
         t = next;
 
-        // checks if already exists and doesnt allow for overwrite for right now.
+        // checks if variable with that name already exists
         if(variable_exists(var.kind()))
         {
-            calc_err = CPError::BADTOKEN;
-            throw std::runtime_error("variable name already exists, no overwriting");
+            // if var exists, throw err, no overwrites for right now
+            calc_err = CPError::VAROVERWRITE;
+            //ts.putback(var);
+            std::string errmsg("Variable name {");
+            errmsg += var.kind();
+            errmsg += "} already exists, no overwriting.";
+            throw std::runtime_error(errmsg);
         }
 
     }
     else {
-        // if not alphabetical then must be a mistake
-        calc_err = CPError::BADTOKEN;
-        throw std::runtime_error("variable name expected");
+        // if expected var name is not alphabetical
+        // must be a mistake, throw err and show what was given. 
+        calc_err = CPError::INVALIDVARNAME;
+        std::string errmsg("variable name expected but was given {");
+        if(iscntrl(var.kind())) {
+            ts.putback(var);
+            errmsg += ' ';
+        }
+        else if(var.kind() == number)
+            errmsg += std::to_string(var.value());
+        else
+            errmsg += var.kind();
+        errmsg += "}.";
+        throw std::runtime_error(errmsg);
     }
 
     // checks if '=' comes after variable name
     if(t.kind() != '=')
     {
         // if not, throw error showing what was there instead
-        calc_err = CPError::BADTOKEN;
-        throw std::runtime_error("'=' expected to complete variable");
+        calc_err = CPError::MISSINGEQUAL;
+        std::string errmsg("'=' expected but given {");
+        if(iscntrl(t.kind())) {
+            ts.putback(t);
+            errmsg += ' ';
+        }
+        else if(t.kind() == number)
+            errmsg += std::to_string(t.value());
+        else 
+            errmsg += t.kind();
+        errmsg += "}.";
+        throw std::runtime_error(errmsg);
     }
 
     // gathers an expression which will equal variable value.
@@ -379,14 +428,25 @@ void calculator::set_variable()
     {
         // if not, throw error showing what was there instead
         calc_err = CPError::MISSINGPRINT;
-        throw std::runtime_error("';' expected");
-    }
+        std::string errmsg("';' expected but was given {");
+        if(iscntrl(t.kind())) {
+            ts.putback(t);
+            errmsg += ' ';
+        }
+        else if(t.kind() == number)
+            errmsg += std::to_string(t.value());
+        else
+            errmsg += t.kind();
+        errmsg += "}.";
+        throw std::runtime_error(errmsg);
+    }    
 
     // variable passed all checks so it is set as a user variable
     userVars.push_back(var);
     std::cout << "Variable Created!" << std::endl;
 
-    // if '\n' is all that is left... remove it ... else pushback()
+    // if '\n' is all that is left, remove it
+    // else pushback()
     t = ts.get();
     if(t.kind() != '\n') ts.putback(t);
 }
@@ -402,6 +462,13 @@ bool calculator::variable_exists(char const& c) const
     }
 
     return false;
+}
+
+// erase_user_variables() deletes all variables saved
+// in the variable vector when called.
+void calculator::erase_user_variables()
+{
+    userVars.clear();
 }
 
 // calculate() begins the simulated calculator program and
