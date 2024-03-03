@@ -9,7 +9,15 @@
 
 // (COMPLETED)  TODO:   % (Remainer/Modulo)
 
+// TODO:    Before program gets more complex, switch to istringstream
+//          usage. Grab from std::cin using getline and convert to
+//          istringstream. Remove istream.
+
 // TODO:    Pre-defined symbolic values
+//          Requires major restructure. Need to accept multi letter
+//          variable names. An example of symbolic values would be
+//          pi. Important constants such as these should already be
+//          defined in the calculator before runtime.
 
 // (COMPLETED)  TODO:    Variables
 
@@ -352,6 +360,8 @@ void calculator::set_variable()
     }
 
     // checks if variable name comes after 't'
+    // TODO: add check for variable name that conflicts
+    // with key characters.. like 'q'
     token var = ts.get();
     if(isalpha(var.kind()))
     {
@@ -472,29 +482,24 @@ void calculator::erase_user_variables()
 }
 
 // calculate() begins the simulated calculator program and
-// also returns a vector<double> for testing purposes. The 
-// return vector's elements will be tested to confirm if 
-// results for each expression are what they are supposed to be.
+// also returns a vector<double> containing the answers to 
+// the expressions given. The return vector's elements will
+// be tested to confirm correctness in tests/test_filex.cpp
 // NOTE: 
-//      1.  vector<double> allVals elements default to 0. <0,0,0,0,0>
-//      2.  if an expression throws an exception it does not count for
-//          the expression counter 'numOfvals' and it will not be assigned
+//      1.  When testing, keep in mind if no values are given or an exception
+//          was thrown for every expression, allVals will remain at size 0.
+//      2.  if an expression throws an exception, it will not be assigned
 //          a spot in the allVals vector. Program will move to next expression.
+
 std::vector<double> calculator::calculate(std::string const& commands)
 {
     // Used for testing purposes.
-    std::vector<double> allVals(5); // returns the calculated results as a vector.
-    int numOfVals = 0;              // keeps track of the amount of values per string argument.
+    std::vector<double> allVals; // returns the calculated results as a vector.
     calc_err = CPError::NOERR;      // make sure calc_error is reset
 
     // if a string was given ... set as source stream
-    // else string_source remains false.
-    bool string_source = false;
     if(!commands.empty())
-    {
-        string_source = true;
         ts = token_stream(commands);
-    }
 
     // main calculator loop
     while (ts.has_more_tokens())
@@ -547,25 +552,11 @@ std::vector<double> calculator::calculate(std::string const& commands)
                 throw std::runtime_error("';' expected");
             }
 
-            // Used for testing purposes. ONLY STRINGS
-            // Gathers results from each expression and adds to allVals vector.
-            // if max number of expressions per line is met, prints error message and returns vector.
-            if(string_source)
-            {
-                if(numOfVals < allVals.size()) allVals[numOfVals] = val;
-                else 
-                {
-                    calc_err = CPError::MAXEXPRESSIONS;
-                    std::cerr << "Too many expressions in one line. Five only" << std::endl;
-                    return allVals;
-                }
-                numOfVals++;
-            }
-
-            // printing end result per expression to terminal
+            
+            allVals.push_back(val);
             std::cout << result << val << std::endl;
 
-            // if '\n' is all that is left... remove it ... else pushback()
+            // if '\n' is all that is left... remove it ... else putback()
             t = ts.get();
             if(t.kind() != '\n') ts.putback(t);
         }

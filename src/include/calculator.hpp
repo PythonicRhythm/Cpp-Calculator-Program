@@ -22,7 +22,6 @@ enum class CPError
     MODBYZERO,
     INVALIDVARNAME,
     VAROVERWRITE,
-    MAXEXPRESSIONS
 };
 
 // program error value used for determining cause of exception 
