@@ -111,19 +111,36 @@ private:
 
     };
 
+    class variable
+    {
+        std::string varname;
+        double varvalue;
+
+    public:
+        std::string name() const;
+        double value() const;
+        void update_value(double);
+        variable(std::string name, double val)
+        : varname(name)
+        , varvalue(val)
+        {
+        }
+
+    };
+
     // hidden
     token_stream ts;
-    std::vector<token> userVars;
+    std::vector<variable> userVars;
     double primary();
     double term();
     double expression();
     void clean_up_mess(char const&);
     void set_variable();
-    bool variable_exists(char const&) const;
+    bool variable_exists(std::string&, int*) const;
+    void erase_user_variables();
 
 public:
     // user interface:
-    void erase_user_variables();
     std::vector<double> calculate(std::string const& commands = "");
 
 };

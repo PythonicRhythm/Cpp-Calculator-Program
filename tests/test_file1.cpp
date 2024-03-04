@@ -266,7 +266,7 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(arr1.size() == 1);
 
     arr1 = c.calculate("let x = 10; (300-2)*x; 29-x");
-    c.erase_user_variables();
+    //c.erase_user_variables();
     CHECK(calc_err == CPError::MISSINGPRINT);
     CHECK(equalDouble(arr1[0], 2980) == true);
     CHECK(arr1.size() == 1);
@@ -280,7 +280,7 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("let x = 10; let y -200;");
-    c.erase_user_variables();
+    //c.erase_user_variables();
     CHECK(calc_err == CPError::MISSINGEQUAL);
     CHECK(arr1.size() == 0);
 
@@ -339,12 +339,12 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(arr1.size() == 6);
 
     arr1 = c.calculate("let x = 200; let x = 25;");
-    c.erase_user_variables();
+    //c.erase_user_variables();
     CHECK(calc_err == CPError::VAROVERWRITE);
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("let x = 25; let y = 200*x; let z = x*y; let x = z;");
-    c.erase_user_variables();
+    //c.erase_user_variables();
     CHECK(calc_err == CPError::VAROVERWRITE);
     CHECK(arr1.size() == 0);
 

@@ -47,30 +47,6 @@ void calculator::token::set_value(double newVal)
     value_ = newVal;
 }
 
-// set_source() allows declaring another stream source after initial construction. 
-void calculator::token_stream::set_source(std::string const& str)
-{
-    source = new std::istringstream (str);
-}
-
-// has_more_tokens() allows token_stream to keep reading while the token_stream has not encountered EOF.
-bool calculator::token_stream::has_more_tokens()
-{
-    return source->good();
-}
-
-// putback() inserts a token into a single slot buffer.
-void calculator::token_stream::putback(token t)
-{
-    if (full) 
-    {
-        calc_err = CPError::PUTBACKFULL;
-        throw std::runtime_error("putback() into a full buffer");
-    }
-    buffer = t;
-    full = true;
-}
-
 // get() reads a token from the istream* source.
 calculator::token calculator::token_stream::get()
 {
@@ -85,28 +61,12 @@ calculator::token calculator::token_stream::get()
     char ch;
 
     // Code below is used to allow for cleaning up errors on the behalf of the user.
-    if(source->eof()) return token(nullTerm);   // if at end of file, return nullterm... should lead to end of program.
-    
-    // for std::cin only, terminal input
-    if(!string_input) 
-    {
-        // clean up whitespace until you find non-ws token or you find newline char.
-        while(isspace(source->peek()))
-        {
-            if(source->peek() == newline)
-            {
-                source->get();
-                return token(newline);
-            }
-            source->get();
-            
-        }
-    }
+    if(!(source->good())) return token(nullTerm);   // if at end of file, return nullterm... should lead to end of program.
     
     *source >> ch;
 
     if(isalpha(ch)) return token(ch);
-
+    if(ch == '@') return token(nullTerm);
     switch (ch)
     {
     case '(':
@@ -140,8 +100,21 @@ calculator::token calculator::token_stream::get()
     }
     default:
         calc_err = CPError::BADTOKEN;
+        //std::cout << (int)ch << std::endl;
         throw std::runtime_error("Bad Token");
     }
+}
+
+// putback() inserts a token into a single slot buffer.
+void calculator::token_stream::putback(token t)
+{
+    if (full) 
+    {
+        calc_err = CPError::PUTBACKFULL;
+        throw std::runtime_error("putback() into a full buffer");
+    }
+    buffer = t;
+    full = true;
 }
 
 // ignore() discard tokens up to and including a c
@@ -153,39 +126,69 @@ void calculator::token_stream::ignore(char c)
         // checks if the expression that failed is the last one.
         // if so, cleans out all whitespace.
         full = false;
-        char ch = source->get();
-        while(isspace(ch)) {
-            if(ch == newline) return;
-            ch = source->get();
-        }
+        // char ch = source->get();
+        // while(isspace(ch)) {
+        //     if(ch == newline) return;
+        //     ch = source->get();
+        // }
 
-        if(source->eof()) return;
+        //if(source->eof()) return;
         
         // if there is another expression, putsback token and program should continue onward.
-        source->putback(ch);
+        //source->putback(ch);
         return;
     }
-    else if (full && buffer.kind() == newline)
-    {
-        full = false;
-        return;
-    }
+    // else if (full && buffer.kind() == newline)
+    // {
+    //     full = false;
+    //     return;
+    // }
     else if (full && buffer.kind() == number) return;
     else if(full && buffer.kind() == quit) return;
     
     full = false;    // discard the contents of buffer
 
-    // now search input src for c and delete until c, '\n', EOF is found
+    // now search input src for c and delete until c or EOF is found
     char ch = source->get();
     while(ch != c)
     {
-        if(ch == newline) return;
-        if(source->eof()) return;
+        //if(ch == newline) return;
+        if(source->eof()) {
+            source->clear();
+            putback(token('\0'));
+            return;
+        }
         ch = source->get();
     }
 
-    source->get();
+    return;
+}
 
+// set_source() allows declaring another stream source after initial construction. 
+void calculator::token_stream::set_source(std::string const& str)
+{
+    source = new std::istringstream (str);
+}
+
+// has_more_tokens() allows token_stream to keep reading while the token_stream has not encountered EOF.
+bool calculator::token_stream::has_more_tokens()
+{
+    return !(source->eof());
+}
+
+std::string calculator::variable::name() const 
+{
+    return varname;
+}
+
+double calculator::variable::value() const
+{
+    return varvalue;
+}
+
+void calculator::variable::update_value(double v)
+{
+    varvalue = v;
 }
 
 // primary() represents a number, negative sign or ‘(‘ expression ‘)’
@@ -218,17 +221,23 @@ double calculator::primary()
 
                 // if the token is an existing variable, return its value.
                 // finding existing variable should be made into a function.
-                for(auto& tok: userVars) {
-                    if(tok.kind() == t.kind())
-                    {
-                        t.set_value(tok.value());
-                        return tok.value();
-                    }
+                std::string name (1, t.kind());
+                t = ts.get();
+                while(isalpha(t.kind()))
+                {
+                    name.append(1, t.kind());
+                    t = ts.get();
+                }
+                ts.putback(t);
+
+                int i = -1;
+                if(variable_exists(name, &i))
+                {
+                    return userVars.at(i).value();
                 }
 
                 // else its a bad token
                 calc_err = CPError::BADTOKEN;
-                ts.putback(t);
                 throw std::runtime_error("Bad Token");
             }
             else{
@@ -362,50 +371,62 @@ void calculator::set_variable()
     // checks if variable name comes after 't'
     // TODO: add check for variable name that conflicts
     // with key characters.. like 'q'
-    token var = ts.get();
-    if(isalpha(var.kind()))
+    t = ts.get();
+    std::string name(1, t.kind());
+    if(isalpha(t.kind()))
     {
-        // checks if variable name given is longer than one letter.
-        token next = ts.get();
-        if(isalpha(next.kind()))
+
+        t = ts.get();
+        while(isalpha(t.kind())) 
         {
-            // if longer than one letter throw err and show what was given
-            calc_err = CPError::INVALIDVARNAME;
-            ts.putback(next);
-            std::string errmsg("One letter var name expected but given {");
-            errmsg += var.kind();
-            errmsg += next.kind();
-            errmsg += "...}.";
-            throw std::runtime_error(errmsg);
+            name.append(1, t.kind());
+            t = ts.get();
         }
-        t = next;
+
+        if(name.size() > 1 && name[0] == quit)
+            throw std::runtime_error("Cannot create a variable with only 'q' character.");
+
+        // checks if variable name given is longer than one letter.
+        // token next = ts.get();
+        // if(isalpha(next.kind()))
+        // {
+        //     // if longer than one letter throw err and show what was given
+        //     calc_err = CPError::INVALIDVARNAME;
+        //     ts.putback(next);
+        //     std::string errmsg("One letter var name expected but given {");
+        //     errmsg += var.kind();
+        //     errmsg += next.kind();
+        //     errmsg += "...}.";
+        //     throw std::runtime_error(errmsg);
+        // }
+        // t = next;
 
         // checks if variable with that name already exists
-        if(variable_exists(var.kind()))
-        {
-            // if var exists, throw err, no overwrites for right now
-            calc_err = CPError::VAROVERWRITE;
-            //ts.putback(var);
-            std::string errmsg("Variable name {");
-            errmsg += var.kind();
-            errmsg += "} already exists, no overwriting.";
-            throw std::runtime_error(errmsg);
-        }
+        // if(variable_exists(var.kind()))
+        // {
+        //     // if var exists, throw err, no overwrites for right now
+        //     calc_err = CPError::VAROVERWRITE;
+        //     //ts.putback(var);
+        //     std::string errmsg("Variable name {");
+        //     errmsg += var.kind();
+        //     errmsg += "} already exists, no overwriting.";
+        //     throw std::runtime_error(errmsg);
+        // }
 
     }
     else {
         // if expected var name is not alphabetical
         // must be a mistake, throw err and show what was given. 
         calc_err = CPError::INVALIDVARNAME;
-        std::string errmsg("variable name expected but was given {");
-        if(iscntrl(var.kind())) {
-            ts.putback(var);
+        std::string errmsg("Variable name expected but was given {");
+        if(iscntrl(t.kind())) {
+            ts.putback(t);
             errmsg += ' ';
         }
-        else if(var.kind() == number)
-            errmsg += std::to_string(var.value());
+        else if(t.kind() == number)
+            errmsg += std::to_string(t.value());
         else
-            errmsg += var.kind();
+            errmsg += t.kind();
         errmsg += "}.";
         throw std::runtime_error(errmsg);
     }
@@ -430,8 +451,7 @@ void calculator::set_variable()
 
     // gathers an expression which will equal variable value.
     double varValue = expression();
-    var.set_value(varValue);
-
+    
     // checks if ';' character comes after value
     t = ts.get();
     if(t.kind() != print)
@@ -449,28 +469,42 @@ void calculator::set_variable()
             errmsg += t.kind();
         errmsg += "}.";
         throw std::runtime_error(errmsg);
-    }    
+    }
 
-    // variable passed all checks so it is set as a user variable
-    userVars.push_back(var);
-    std::cout << "Variable Created!" << std::endl;
+    int i = -1;
+    if(variable_exists(name, &i))
+    {
+        userVars.at(i).update_value(varValue);
+        std::cout << "Variable Overwritten!" << std::endl;
+    }
+    else 
+    {
+        variable var (name, varValue);
+        userVars.push_back(var);
+        std::cout << "Variable Created!" << std::endl;
+    }
 
     // if '\n' is all that is left, remove it
     // else pushback()
-    t = ts.get();
-    if(t.kind() != '\n') ts.putback(t);
+    // t = ts.get();
+    // if(t.kind() != '\0') ts.putback(t);
 }
 
 // variable_exists() checks if a variable exists
-// with the character given.
-bool calculator::variable_exists(char const& c) const
-{
-    for(auto& tok: userVars)
-    {
-        if(tok.kind() == c)
-            return true;
-    }
+// with the name (string) given and if so, itll
 
+bool calculator::variable_exists(std::string& name, int* index) const
+{
+    for(int i = 0; i < userVars.size(); i++)
+    {
+        if(userVars.at(i).name().compare(name) == 0)
+        {
+            *index = i;
+            return true;
+        }
+    }
+    
+    *index = -1;
     return false;
 }
 
@@ -484,7 +518,12 @@ void calculator::erase_user_variables()
 // calculate() begins the simulated calculator program and
 // also returns a vector<double> containing the answers to 
 // the expressions given. The return vector's elements will
-// be tested to confirm correctness in tests/test_filex.cpp
+// be tested to confirm correctness in tests/test_filex.cpp.
+// If you want to use calculate() via terminal, you must call
+// calculate() with no arguments. Calling calculate() with an
+// argument such as calculate("3+5;") will find the result for
+// the expressions in this string and immediately close. It
+// should not ask for more input, if so there is something wrong.
 // NOTE: 
 //      1.  When testing, keep in mind if no values are given or an exception
 //          was thrown for every expression, allVals will remain at size 0.
@@ -493,20 +532,37 @@ void calculator::erase_user_variables()
 
 std::vector<double> calculator::calculate(std::string const& commands)
 {
-    // Used for testing purposes.
-    std::vector<double> allVals; // returns the calculated results as a vector.
+    std::vector<double> allVals;    // returns the calculated results as a vector.
     calc_err = CPError::NOERR;      // make sure calc_error is reset
+    bool str_input = false;         // keeps track if the string being worked on is given via parameter input.
+    erase_user_variables();         // clears all user variables saved in the calculator.
+
+    // print prompt
+    std::cout << prompt;
 
     // if a string was given ... set as source stream
     if(!commands.empty())
+    {
+        str_input = true;
         ts = token_stream(commands);
+    }
+    else {
+        std::string line;
+        std::getline(std::cin, line);
+        ts = token_stream(line);
+    }
 
     // main calculator loop
     while (ts.has_more_tokens())
     {
         try
         {
-            std::cout << prompt;    // print prompt
+            // std::cout << prompt;    // print prompt
+            // if(!str_input) {
+            //     std::string line;
+            //     std::getline(std::cin, line);
+            //     ts = token_stream(line);
+            // }
             token t = ts.get();
 
             // first discard all “prints”
@@ -520,8 +576,17 @@ std::vector<double> calculator::calculate(std::string const& commands)
             // check if we reached the end of string.
             if (t.kind() == nullTerm)
             {
-                std::cout << "Command String read..." << std::endl;
-                return allVals;
+                if(str_input) {
+                    std::cout << "Command String read..." << std::endl;
+                    return allVals;
+                }
+
+                std::cout << prompt;
+                std::string line;
+                std::getline(std::cin, line);
+                ts = token_stream(line);
+                continue;
+
             }
 
             // if token is a letter, check if its a variable or symbolic value
@@ -535,8 +600,8 @@ std::vector<double> calculator::calculate(std::string const& commands)
             }
 
             // check if we reached a newline char
-            if (t.kind() == '\n')
-                continue;
+            // if (t.kind() == '\n')
+            //     continue;
             
             // token is something useful like number, parenth, operator, etc.
             // lets try to make an expression with it.
@@ -551,14 +616,13 @@ std::vector<double> calculator::calculate(std::string const& commands)
                 ts.putback(t);
                 throw std::runtime_error("';' expected");
             }
-
             
             allVals.push_back(val);
             std::cout << result << val << std::endl;
 
             // if '\n' is all that is left... remove it ... else putback()
-            t = ts.get();
-            if(t.kind() != '\n') ts.putback(t);
+            //t = ts.get();
+            //if(t.kind() != '\n') ts.putback(t);
         }
         // any runtime error will be caught and we clean
         // up the expression that caused the exception. 
