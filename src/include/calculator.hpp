@@ -21,7 +21,6 @@ enum class CPError
     DIVIDEBYZERO,
     MODBYZERO,
     INVALIDVARNAME,
-    VAROVERWRITE,
 };
 
 // program error value used for determining cause of exception 
