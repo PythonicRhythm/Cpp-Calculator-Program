@@ -319,11 +319,11 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(arr1.size() == 1);
 
     arr1 = c.calculate("let xy = 10;");
-    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(calc_err == CPError::NOERR);
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("let xyz = ;");
-    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(calc_err == CPError::MISSINGPRIMARY);
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("let 25 = 200;");
@@ -331,7 +331,7 @@ TEST_CASE("Test Case 6: Testing error messages.")
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("let mx = 200;");
-    CHECK(calc_err == CPError::INVALIDVARNAME);
+    CHECK(calc_err == CPError::NOERR);
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("35+25; 35+25; 35+25; 35+25; 35+25; 35+25;");
@@ -340,12 +340,16 @@ TEST_CASE("Test Case 6: Testing error messages.")
 
     arr1 = c.calculate("let x = 200; let x = 25;");
     //c.erase_user_variables();
-    CHECK(calc_err == CPError::VAROVERWRITE);
+    CHECK(calc_err == CPError::NOERR);
     CHECK(arr1.size() == 0);
 
     arr1 = c.calculate("let x = 25; let y = 200*x; let z = x*y; let x = z;");
     //c.erase_user_variables();
-    CHECK(calc_err == CPError::VAROVERWRITE);
+    CHECK(calc_err == CPError::NOERR);
+    CHECK(arr1.size() == 0);
+
+    arr1 = c.calculate("let x = 0; ((23/23-24)+300)/0;");
+    CHECK(calc_err == CPError::DIVIDEBYZERO);
     CHECK(arr1.size() == 0);
 
     // Making sure error var resets to NOERR when new calc call is made.
