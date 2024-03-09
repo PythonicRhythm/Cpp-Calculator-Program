@@ -100,7 +100,6 @@ calculator::token calculator::token_stream::get()
     }
     default:
         calc_err = CPError::BADTOKEN;
-        //std::cout << (int)ch << std::endl;
         throw std::runtime_error("Bad Token");
     }
 }
@@ -228,17 +227,21 @@ double calculator::primary()
                     name.append(1, t.kind());
                     t = ts.get();
                 }
+                if(t.kind() == nullTerm)
+                    name.erase(name.length()-1, 1);
                 ts.putback(t);
 
                 int i = -1;
                 if(variable_exists(name, &i))
                 {
+                    std::cout << "Entered" << std::endl;
                     return userVars.at(i).value();
                 }
-
-                // else its a bad token
-                calc_err = CPError::BADTOKEN;
-                throw std::runtime_error("Bad Token");
+                else {
+                    // else its a bad token
+                    calc_err = CPError::BADTOKEN;
+                    throw std::runtime_error("Bad Token");
+                }
             }
             else{
                 // if its not a letter, number, '-', or '(', then throw excep
